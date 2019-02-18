@@ -31,9 +31,8 @@ def create_trainer():
 
     loaders = create_loaders()
 
-    trainer = Trainer(model, optimizer, lr_decay, objective, device, loaders, 
+    trainer = Trainer(model, optimizer, lr_decay, objective, device, loaders, logger,
                   metrics=metrics, 
-                  logger=logger,
                   workspace_path=args["workspace_path"],
                   eval_set="test",
                   )

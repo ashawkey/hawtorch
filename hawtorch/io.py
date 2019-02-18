@@ -22,6 +22,7 @@ class logger:
         self.workspace = workspace
         self.flush = flush
         if workspace is not None:
+            os.makedirs(workspace, exist_ok=True)
             self.log_file = os.path.join(workspace, "log.txt")
             self.fp = open(self.log_file, "a+")
         else:
