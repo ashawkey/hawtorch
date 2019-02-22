@@ -1,9 +1,14 @@
 import os
 import sys
 import glob
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, default_collate
 
 import vision
+
+def collate_fn_remove_None(batch):
+    # filter out bad data in a batch
+    batch = list(filter(lambda x: x is not None, batch))
+    return default_collate(batch)
 
 class imageFolder(Dataset):
     def __init__(self, root, logger, extension=["*.jpg", "*.png"], use_list=None):

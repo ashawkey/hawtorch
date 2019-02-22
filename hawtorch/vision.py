@@ -1,8 +1,8 @@
+import cv2
+import numpy as np
+from PIL import Image
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-import cv2
-from PIL import Image
-import numpy as np
 
 def imread(filename):
     """
@@ -18,6 +18,29 @@ def imsave(filename, img):
     plt.imsave() can't save grayscale images.
     """
     cv2.imwrite(filename, img)
+
+def plot_images(img, img2=None):
+    """
+    Plot at most 2 images.
+    Support passing in ndarray or image path string.
+    """
+    fig = plt.figure(figsize=(20,10))
+    if isinstance(img, str): img = imread(img)
+    if isinstance(img2, str): img2 = imread(img2)
+    if img2 is None:
+        ax = fig.add_subplot(111)
+        ax.imshow(img)
+    else:
+        height, width = img.shape[0], img.shape[1]
+        if height < width:
+            ax = fig.add_subplot(211)
+            ax2 = fig.add_subplot(212)
+        else:
+            ax = fig.add_subplot(121)
+            ax2 = fig.add_subplot(122)
+        ax.imshow(img)
+        ax2.imshow(img2)
+    plt.show()
 
 def _plot_point_cloud(ax, pc, axes=[0,1,2], keep_ratio=1.0, pointsize=0.05, color='k'):
     N = pc.shape[0]
