@@ -1,0 +1,14 @@
+{
+    "model": "AlexNet",
+    "optimizer": "Adam",
+    "objective": "CrossEntropyLoss",
+    "workspace_path": "./workspace/AlexNet",
+    "device": "cuda",
+    "epochs": 300,
+    "train_batch_size": 128,
+    "test_batch_size": 128,
+    "lr": 0.001,
+    "lr_decay": 0.1,
+    "lr_decay_step": [100,150,250],
+    "weight_decay": 5e-4
+}
