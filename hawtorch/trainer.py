@@ -1,6 +1,8 @@
 import os
 import glob
 import time
+import tqdm
+import tensorboardX
 import numpy as np
 import torch
 import torch.nn as nn
@@ -27,10 +29,15 @@ class Trainer(object):
                  metrics=[],
                  workspace_path=None, 
                  use_checkpoint=-1,
+                 max_keep_ckpt=10,
                  eval_set="val",
+                 test_set="test",
                  eval_interval=1,
                  save_interval=1,
                  report_step_interval=300,
+                 use_parallel=False,
+                 use_tqdm=True,
+                 use_tensorboardX=True,
                  ):
                  
         self.model = model
@@ -43,13 +50,20 @@ class Trainer(object):
         self.log = logger
         self.workspace_path = workspace_path
         self.use_checkpoint = use_checkpoint
+        self.max_keep_ckpt = max_keep_ckpt
         self.eval_set = eval_set
+        self.test_set = test_set
         self.eval_interval = eval_interval
         self.save_interval = save_interval
         self.report_step_interval = report_step_interval
+        self.use_parallel = use_parallel
+        self.use_tqdm = use_tqdm
+        self.use_tensorboardX = use_tensorboardX
+        
 
         self.model.to(self.device)
-
+        if self.use_parallel:
+            self.model = nn.DataParallel(self.model)
 
         if self.workspace_path is not None:
             os.makedirs(self.workspace_path, exist_ok=True)
@@ -72,10 +86,18 @@ class Trainer(object):
         self.stats = {
             "StepLoss": [],
             "EpochLoss": [],
+            "EvalResults": [],
+            "Checkpoints": [],
+            "BestResult": None,
             }
 
 
     def train(self, max_epochs):
+        if self.use_tensorboardX:
+            time_stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+            logdir = os.path.join(self.workspace_path, "run", time_stamp)
+            self.writer = tensorboardX.SummaryWriter(logdir)
+
         for epoch in range(self.epoch, max_epochs+1):
             self.epoch = epoch
             self.train_one_epoch()
@@ -85,7 +107,10 @@ class Trainer(object):
 
             if self.workspace_path is not None and self.epoch % self.save_interval == 0:
                 self.save_checkpoint()
-                self.log.info(f"Saved checkpoint {epoch} successfully.")
+
+        if self.use_tensorboardX:
+            #self.writer.export_scalars_to_json("./all_scalars.json")
+            self.writer.close()
 
         self.log.info("Finished Training.")
 
@@ -98,7 +123,12 @@ class Trainer(object):
             metric.clear()
         total_loss = []
         self.model.train()
-        for inputs, truths in self.dataloaders["train"]:
+
+        pbar = self.dataloaders["train"]
+        if self.use_tqdm:
+            pbar = tqdm.tqdm(pbar)
+
+        for inputs, truths in pbar:
             start_time = time.time()
             self.global_step += 1
 
@@ -114,11 +144,16 @@ class Trainer(object):
 
             for metric in self.metrics:
                 metric.update(outputs, truths)
+                if self.use_tensorboardX:
+                    metric.write(self.writer, self.global_step, prefix="train")
+                    
+            if self.use_tensorboardX:
+                self.writer.add_scalar("train/loss", loss.item(), self.global_step)
 
             total_loss.append(loss.item())
             total_time = time.time() - start_time
 
-            if self.global_step % self.report_step_interval == 0:
+            if self.report_step_interval > 0 and self.global_step % self.report_step_interval == 0:
                 self.log.log1(f"step={self.epoch}/{self.global_step}, loss={loss.item():.4f}, time={total_time:.2f}")
                 for metric in self.metrics:
                     self.log.log1(metric.report())
@@ -138,10 +173,13 @@ class Trainer(object):
         for metric in self.metrics:
             metric.clear()
 
+        pbar = self.dataloaders[self.eval_set]
+        if self.use_tqdm:
+            pbar = tqdm.tqdm(pbar)
+
         with torch.no_grad():
             start_time = time.time()
-            for inputs, truths in self.dataloaders[self.eval_set]:
-                
+            for inputs, truths in pbar:    
                 inputs = inputs.to(self.device)
                 truths = truths.to(self.device)
 
@@ -152,28 +190,55 @@ class Trainer(object):
 
             total_time = time.time() - start_time
             self.log.log1(f"total_time={total_time:.2f}")
+            
+            self.stats["EvalResults"].append(self.metrics[0].measure())
+
             for metric in self.metrics:
                 self.log.log1(metric.report())
+                if self.use_tensorboardX:
+                    metric.write(self.writer, self.epoch, prefix="evaluate")
                 metric.clear()
 
         self.log.log(f"++> Evaluate Finished.")
 
-    def plot_loss(self):
-        fig = plt.figure(figsize=(12, 8))
-        ax = fig.add_subplot(111)
-        ax.set_ylabel("loss")
-        ax.set_xlabel("step")
-        ax.plot(self.stats["StepLoss"], color='b', alpha=0.3)
-        ax2 = ax.twiny()
-        ax2.set_xlabel("epoch")
-        ax2.plot(self.stats["EpochLoss"], color='r')
-        plt.show()
 
+    def predict(self):
+        self.log.log(f"++> Predict at epoch {self.epoch} ...")
+
+        self.model.eval()
+
+        pbar = self.dataloaders[self.test_set]
+        if self.use_tqdm:
+            pbar = tqdm.tqdm(pbar)
+
+        with torch.no_grad():
+            start_time = time.time()
+            for inputs in pbar:    
+                inputs = inputs.to(self.device)
+                outputs = self.model(inputs)
+                # TODO: codes to save outputs
+
+            total_time = time.time() - start_time
+            self.log.log1(f"total_time={total_time:.2f}")
+
+        self.log.log(f"++> Evaluate Finished.")
 
     def save_checkpoint(self):
-        """Saves a checkpoint of the modelwork and other variables."""
+        """Saves a checkpoint of the network and other variables."""
         with DelayedKeyboardInterrupt():
             model_name = type(self.model).__name__
+            ckpt_path = os.path.join(self.workspace_path, 'checkpoints')
+            file_path = f"{ckpt_path}/{model_name}_ep{self.epoch:04d}.pth.tar"
+            best_path = f"{ckpt_path}/{model_name}_best.pth.tar"
+            os.makedirs(ckpt_path, exist_ok=True)
+
+            self.stats["Checkpoints"].append(file_path)
+
+            if len(self.stats["Checkpoints"]) > self.max_keep_ckpt:
+                old_ckpt = self.stats["Checkpoints"].pop(0)
+                if os.path.exists(old_ckpt):
+                    os.remove(old_ckpt)
+                    self.log.info(f"Removed old checkpoint {old_ckpt}")
 
             state = {
                 'epoch': self.epoch,
@@ -184,16 +249,18 @@ class Trainer(object):
                 'lr_scheduler': self.lr_scheduler.state_dict(),
                 'stats' : self.stats,
             }
+
+            if self.stats["BestResult"] is None or self.metrics[0].better(self.stats["EvalResults"][-1], self.stats["BestResult"]):
+                self.stats["BestResult"] = self.stats["EvalResults"][-1]
+                torch.save(state, best_path)
+                self.log.info(f"Saved Best checkpoint.")
             
-            ckpt_path = os.path.join(self.workspace_path, 'checkpoints')
-            os.makedirs(ckpt_path, exist_ok=True)
-            
-            file_path = f"{ckpt_path}/{model_name}_ep{self.epoch:04d}.pth.tar"
             torch.save(state, file_path)
+            self.log.info(f"Saved checkpoint {self.epoch} successfully.")
 
 
-    def load_checkpoint(self, checkpoint = None):
-        """Loads a modelwork checkpoint file.
+    def load_checkpoint(self, checkpoint=None):
+        """Loads a network checkpoint file.
 
         Can be called in three different ways:
             load_checkpoint():

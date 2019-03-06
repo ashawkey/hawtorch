@@ -1,5 +1,7 @@
+import os
 import torch
 import numpy as np
+
 
 class ClassificationAverager:
     """ statistics for classification """
@@ -24,7 +26,18 @@ class ClassificationAverager:
             false_positive = np.count_nonzero(np.bitwise_and(preds == Cls, labels != Cls))
             false_negative = np.count_nonzero(np.bitwise_and(preds != Cls, labels == Cls))
             self.table[Cls] += [true_positive, true_negative, false_positive, false_negative]
-    
+
+    def measure(self):
+        total_TP = np.sum(self.table[:, 0]) # all true positives 
+        accuracy = total_TP/self.N
+        return accuracy
+
+    def better(self, A, B):
+        return A > B
+
+    def write(self, writer, global_step, prefix=""):
+        writer.add_scalar(os.path.join(prefix,"Accuracy"), self.measure(), global_step)
+
     def report(self, multiclass=True):
         precisions = []
         recalls = []
