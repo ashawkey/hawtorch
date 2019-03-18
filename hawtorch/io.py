@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import csv
+from pprint import pprint
 
 """
 method for read/load config files, and logging.
@@ -19,6 +20,12 @@ def write_json(filename, data):
 
 class logger:
     def __init__(self, workspace=None, flush=True):
+        """
+        logger class.
+        param:
+            workspace: path to save log file, if None, only print to stdout.
+            flush: force flushing when printing.
+        """
         self.workspace = workspace
         self.flush = flush
         if workspace is not None:
@@ -32,18 +39,19 @@ class logger:
         if self.fp: 
             self.fp.close()
 
-    def _print(self, text):
-        print(text)
+    def _print(self, text, use_pprint=False):
+        print(text) if not use_pprint else pprint(text)
         if self.fp:
             print(text, file=self.fp)
         if self.flush:
             sys.stdout.flush()
 
+
     def log(self, text, level=0):
         text = "\t"*level + text
         text.replace("\n", "\n"+"\t"*level)
         self._print(text)
-        
+
     def log1(self, text):
         self.log(text, level=1)
 
@@ -51,3 +59,14 @@ class logger:
         text = "[INFO] " + text
         text.replace("\n", "\n"+"[INFO] ")
         self._print(text)
+
+    def error(self, text):
+        text = "[ERROR] " + text
+        text.replace("\n", "\n"+"[ERROR] ")
+        self._print(text)
+
+    def logblock(self, text):
+        self._print("#####################")
+        self._print(text, use_pprint=True)
+        self._print("#####################")
+        

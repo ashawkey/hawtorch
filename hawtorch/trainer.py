@@ -76,13 +76,14 @@ class Trainer(object):
                 self.log.info(f"Loading checkpoint {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint)
 
-        self.log.info('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
+        self.log.info('Number of model parameters: {}'.format(sum([p.numel() for p in model.parameters() if p.requires_grad])))
 
         for metric in self.metrics:
             metric.clear()
 
         self.epoch = 1
-        self.global_step = 1
+        self.global_step = 0
+        self.local_step = 0
         self.stats = {
             "StepLoss": [],
             "EpochLoss": [],
@@ -91,8 +92,30 @@ class Trainer(object):
             "BestResult": None,
             }
 
+    """
+    All you should modify is the following three step functions.
+    """
+    ### ------------------------------
+
+    def train_step(self, inputs, truths):        
+        outputs = self.model(inputs)
+        loss = self.objective(outputs, truths)
+        return outputs, loss
+    
+    def eval_step(self, inputs, truths):
+        outputs = self.model(inputs)
+        return outputs
+    
+    def test_step(self, inputs):
+        outputs = self.model(inputs)
+        return outputs
+
+    ### ------------------------------
 
     def train(self, max_epochs):
+        """
+        do the training process for max_epochs.
+        """
         if self.use_tensorboardX:
             time_stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
             logdir = os.path.join(self.workspace_path, "run", time_stamp)
@@ -103,7 +126,7 @@ class Trainer(object):
             self.train_one_epoch()
 
             if self.epoch % self.eval_interval == 0:
-                self.evaluate()
+                self.evaluate_one_epoch()
 
             if self.workspace_path is not None and self.epoch % self.save_interval == 0:
                 self.save_checkpoint()
@@ -113,6 +136,19 @@ class Trainer(object):
             self.writer.close()
 
         self.log.info("Finished Training.")
+
+    def evaluate(self):
+        """
+        evaluate at the best epoch.
+        """
+        model_name = type(self.model).__name__
+        ckpt_path = os.path.join(self.workspace_path, 'checkpoints')
+        best_path = f"{ckpt_path}/{model_name}_best.pth.tar"
+        if not os.path.exists(best_path):
+            self.log.error("Best checkpoint not found!")
+            raise FileNotFoundError
+        self.load_checkpoint(best_path)
+        self.evaluate_one_epoch()
 
 
     def train_one_epoch(self):
@@ -128,19 +164,21 @@ class Trainer(object):
         if self.use_tqdm:
             pbar = tqdm.tqdm(pbar)
 
+        self.local_step = 0
+        epoch_start_time = time.time()
         for inputs, truths in pbar:
             start_time = time.time()
+            self.local_step += 1
             self.global_step += 1
 
             inputs = inputs.to(self.device)
             truths = truths.to(self.device)
 
-            outputs = self.model(inputs)
+            outputs, loss = self.train_step(inputs, truths)
 
-            self.optimizer.zero_grad()
-            loss = self.objective(outputs, truths)
             loss.backward()
             self.optimizer.step()
+            self.optimizer.zero_grad()
 
             for metric in self.metrics:
                 metric.update(outputs, truths)
@@ -158,15 +196,16 @@ class Trainer(object):
                 for metric in self.metrics:
                     self.log.log1(metric.report())
                     metric.clear()
-        
+
+        epoch_end_time = time.time()
         average_loss = np.mean(total_loss)
         self.stats["StepLoss"].extend(total_loss)
         self.stats["EpochLoss"].append(average_loss)
 
-        self.log.log(f"==> Finished Epoch {self.epoch}, average_loss={average_loss:.4f}")
+        self.log.log(f"==> Finished Epoch {self.epoch}, average_loss={average_loss:.4f}, time={epoch_end_time-epoch_start_time:.4f}")
 
 
-    def evaluate(self):
+    def evaluate_one_epoch(self):
         self.log.log(f"++> Evaluate at epoch {self.epoch} ...")
 
         self.model.eval()
@@ -177,13 +216,17 @@ class Trainer(object):
         if self.use_tqdm:
             pbar = tqdm.tqdm(pbar)
 
+        epoch_start_time = time.time()
         with torch.no_grad():
+            self.local_step = 0
             start_time = time.time()
             for inputs, truths in pbar:    
+                self.local_step += 1
+
                 inputs = inputs.to(self.device)
                 truths = truths.to(self.device)
 
-                outputs = self.model(inputs)
+                outputs = self.eval_step(inputs, truths)
 
                 for metric in self.metrics:
                     metric.update(outputs, truths)
@@ -199,7 +242,8 @@ class Trainer(object):
                     metric.write(self.writer, self.epoch, prefix="evaluate")
                 metric.clear()
 
-        self.log.log(f"++> Evaluate Finished.")
+        epoch_end_time = time.time()
+        self.log.log(f"++> Evaluate Finished. time={epoch_end_time-epoch_start_time:.4f}")
 
 
     def predict(self):
@@ -215,7 +259,7 @@ class Trainer(object):
             start_time = time.time()
             for inputs in pbar:    
                 inputs = inputs.to(self.device)
-                outputs = self.model(inputs)
+                outputs = self.test_step(inputs)
                 # TODO: codes to save outputs
 
             total_time = time.time() - start_time
@@ -289,6 +333,7 @@ class Trainer(object):
             # checkpoint is the path
             checkpoint_path = os.path.expanduser(checkpoint)
         else:
+            self.log.error("load_checkpoint: Invalid argument")
             raise TypeError
 
         checkpoint_dict = torch.load(checkpoint_path)

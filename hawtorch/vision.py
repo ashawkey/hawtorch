@@ -4,12 +4,15 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-def imread(filename):
+def imread(filename, use_float=True):
     """
     Read the image as it is. (Grayscale, RGB, RGBA)
     cv2.imread() needs to set FLAGS to negative.
     """
-    return plt.imread(filename)
+    img = plt.imread(filename)
+    if use_float and np.max(img) > 1:
+        img = img.astype(np.float64)/255
+    return img
     # return cv2.imread(filename, -1)
 
 def imsave(filename, img):
@@ -41,6 +44,32 @@ def plot_images(img, img2=None):
         ax.imshow(img)
         ax2.imshow(img2)
     plt.show()
+
+
+class IntervalSaver:
+    def __init__(self, interval, workspace):
+        self.interval = interval
+        self.workspace = workspace
+        self.counter = 0
+    
+    def save(names, imgs):
+        imsave(names, imgs)
+
+    def __call__(imgs, prefix=None):
+        if not self.counter % self.interval == 0:
+            self.counter += 1
+            return
+
+        if not isinstance(imgs, np.ndarray):
+            imgs = imgs.detach().cpu().numpy()
+
+        if len(imgs.shape)==3:
+            batch_size = imgs.shape[0]
+            for batch in range(batch_size):
+                self.save(names[batch], imgs[batch])
+        else:
+            self.save(names, imgs)
+
 
 def _plot_point_cloud(ax, pc, axes=[0,1,2], keep_ratio=1.0, pointsize=0.05, color='k'):
     N = pc.shape[0]

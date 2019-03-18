@@ -9,9 +9,36 @@ class fcdr(nn.Module):
             nn.Linear(in_features, out_features),
             nn.Dropout(p=p),
         )
-        if activation: self.seq.add_module("activatoin", nn.ReLU(inplace=True))
+        if activation: 
+            self.seq.add_module("activatoin", nn.ReLU(inplace=True))
     def forward(self, x):
         return self.seq(x)
+
+class fcbr(nn.Module):
+    def __init__(self, in_features, out_features, p=0.5, activation=True):
+        super(fcbr, self).__init__()
+        self.seq = nn.Sequential(
+            nn.Linear(in_features, out_features),
+            nn.BatchNorm1d(out_features),
+        )
+        if activation: 
+            self.seq.add_module("activatoin", nn.ReLU(inplace=True))
+    def forward(self, x):
+        return self.seq(x)
+
+class conv1dbr(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation=True):
+        super(conv1dbr, self).__init__()
+        self.seq = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding=padding),
+            nn.BatchNorm1d(out_channels),
+        )
+        if activation: 
+            self.seq.add_module("activation", nn.ReLU(inplace=True))
+
+    def forward(self, x):
+        return self.seq(x) 
+
 
 class conv2dbr(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation=True):
