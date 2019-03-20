@@ -97,17 +97,20 @@ class Trainer(object):
     """
     ### ------------------------------
 
-    def train_step(self, inputs, truths):        
+    def train_step(self, data):        
+        inputs, truths = data
         outputs = self.model(inputs)
         loss = self.objective(outputs, truths)
-        return outputs, loss
+        return outputs, truths, loss
     
-    def eval_step(self, inputs, truths):
+    def eval_step(self, data):
+        inputs, truths = data
         outputs = self.model(inputs)
-        return outputs
+        loss = self.objective(outputs, truths)
+        return outputs, truths, loss
     
-    def test_step(self, inputs):
-        outputs = self.model(inputs)
+    def test_step(self, data):
+        outputs = self.model(data)
         return outputs
 
     ### ------------------------------
@@ -150,6 +153,10 @@ class Trainer(object):
         self.load_checkpoint(best_path)
         self.evaluate_one_epoch()
 
+    def get_time(self):
+        if torch.cuda.is_available(): 
+            torch.cuda.synchronize()
+        return time.time()
 
     def train_one_epoch(self):
         self.log.log(f"==> Start Training Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']} ...")
@@ -165,16 +172,15 @@ class Trainer(object):
             pbar = tqdm.tqdm(pbar)
 
         self.local_step = 0
-        epoch_start_time = time.time()
-        for inputs, truths in pbar:
-            start_time = time.time()
+        epoch_start_time = self.get_time()
+        for data in pbar:
+            start_time = self.get_time()
             self.local_step += 1
             self.global_step += 1
 
-            inputs = inputs.to(self.device)
-            truths = truths.to(self.device)
+            data = data.to(self.device)
 
-            outputs, loss = self.train_step(inputs, truths)
+            outputs, truths, loss = self.train_step(data)
 
             loss.backward()
             self.optimizer.step()
@@ -189,7 +195,7 @@ class Trainer(object):
                 self.writer.add_scalar("train/loss", loss.item(), self.global_step)
 
             total_loss.append(loss.item())
-            total_time = time.time() - start_time
+            total_time = self.get_time() - start_time
 
             if self.report_step_interval > 0 and self.global_step % self.report_step_interval == 0:
                 self.log.log1(f"step={self.epoch}/{self.global_step}, loss={loss.item():.4f}, time={total_time:.2f}")
@@ -197,7 +203,7 @@ class Trainer(object):
                     self.log.log1(metric.report())
                     metric.clear()
 
-        epoch_end_time = time.time()
+        epoch_end_time = self.get_time()
         average_loss = np.mean(total_loss)
         self.stats["StepLoss"].extend(total_loss)
         self.stats["EpochLoss"].append(average_loss)
@@ -216,22 +222,21 @@ class Trainer(object):
         if self.use_tqdm:
             pbar = tqdm.tqdm(pbar)
 
-        epoch_start_time = time.time()
+        epoch_start_time = self.get_time()
         with torch.no_grad():
             self.local_step = 0
-            start_time = time.time()
-            for inputs, truths in pbar:    
+            start_time = self.get_time()
+            for data in pbar:    
                 self.local_step += 1
 
-                inputs = inputs.to(self.device)
-                truths = truths.to(self.device)
+                data = data.to(self.device)
 
-                outputs = self.eval_step(inputs, truths)
+                outputs, truths, loss = self.eval_step(data)
 
                 for metric in self.metrics:
                     metric.update(outputs, truths)
 
-            total_time = time.time() - start_time
+            total_time = self.get_time() - start_time
             self.log.log1(f"total_time={total_time:.2f}")
             
             self.stats["EvalResults"].append(self.metrics[0].measure())
@@ -241,8 +246,11 @@ class Trainer(object):
                 if self.use_tensorboardX:
                     metric.write(self.writer, self.epoch, prefix="evaluate")
                 metric.clear()
+            
+            if self.use_tensorboardX:
+                self.writer.add_scalar("evaluate/loss", loss.item(), self.epoch)
 
-        epoch_end_time = time.time()
+        epoch_end_time = self.get_time()
         self.log.log(f"++> Evaluate Finished. time={epoch_end_time-epoch_start_time:.4f}")
 
 
@@ -256,13 +264,13 @@ class Trainer(object):
             pbar = tqdm.tqdm(pbar)
 
         with torch.no_grad():
-            start_time = time.time()
-            for inputs in pbar:    
-                inputs = inputs.to(self.device)
-                outputs = self.test_step(inputs)
+            start_time = self.get_time()
+            for data in pbar:    
+                data = data.to(self.device)
+                outputs = self.test_step(data)
                 # TODO: codes to save outputs
 
-            total_time = time.time() - start_time
+            total_time = self.get_time() - start_time
             self.log.log1(f"total_time={total_time:.2f}")
 
         self.log.log(f"++> Evaluate Finished.")

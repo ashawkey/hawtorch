@@ -36,7 +36,7 @@ class ClassificationAverager:
         return A > B
 
     def write(self, writer, global_step, prefix=""):
-        writer.add_scalar(os.path.join(prefix,"Accuracy"), self.measure(), global_step)
+        writer.add_scalar(os.path.join(prefix, "Accuracy"), self.measure(), global_step)
 
     def report(self, multiclass=True):
         precisions = []

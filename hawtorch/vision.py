@@ -91,3 +91,22 @@ def plot_point_cloud(pc, axes, keep_ratio=1.0, pointsize=0.05):
         exit(1)
     _plot_point_cloud(ax, pc, axes, keep_ratio=keep_ratio, pointsize=pointsize)
     plt.show()
+
+# plot a torch_geo data object (point in 3D space)
+def plot_graph(data):
+    pos = data.pos.detach().cpu().numpy()
+    edge_index = data.edge_index.detach().cpu().numpy()
+    edge_weight = data.edge_attr.detach().cpu().numpy()
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+    ax.scatter(*(pos.T), s=1.0, c="b")
+
+    num_edges = edge_index.shape[1]
+    for i in range(num_edges):
+        weight = edge_weight[i] if edge_weight is not None else 1
+        A, B = pos[edge_index[0][i]], pos[edge_index[1][i]]
+        ax.plot([A[0],B[0]], [A[1],B[1]], [A[2],B[2]], color='r', lw=1.0)
+
+    plt.show()
+
