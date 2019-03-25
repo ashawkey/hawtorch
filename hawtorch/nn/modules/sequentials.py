@@ -15,11 +15,23 @@ class fcdr(nn.Module):
         return self.seq(x)
 
 class fcbr(nn.Module):
-    def __init__(self, in_features, out_features, p=0.5, activation=True):
+    def __init__(self, in_features, out_features, activation=True):
         super(fcbr, self).__init__()
         self.seq = nn.Sequential(
             nn.Linear(in_features, out_features),
             nn.BatchNorm1d(out_features),
+        )
+        if activation: 
+            self.seq.add_module("activatoin", nn.ReLU(inplace=True))
+    def forward(self, x):
+        return self.seq(x)
+
+class fcgr(nn.Module):
+    def __init__(self, in_features, out_features, num_groups=32, activation=True):
+        super(fcgr, self).__init__()
+        self.seq = nn.Sequential(
+            nn.Linear(in_features, out_features),
+            nn.GroupNorm(num_groups, out_features),
         )
         if activation: 
             self.seq.add_module("activatoin", nn.ReLU(inplace=True))

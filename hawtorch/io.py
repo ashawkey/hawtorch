@@ -69,4 +69,3 @@ class logger:
         self._print("#####################")
         self._print(text, use_pprint=True)
         self._print("#####################")
-        

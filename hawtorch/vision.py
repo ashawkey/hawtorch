@@ -1,4 +1,5 @@
 import cv2
+import torch
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -95,18 +96,26 @@ def plot_point_cloud(pc, axes, keep_ratio=1.0, pointsize=0.05):
 # plot a torch_geo data object (point in 3D space)
 def plot_graph(data):
     pos = data.pos.detach().cpu().numpy()
+    ppos = pos.reshape(2, -1, 3)
     edge_index = data.edge_index.detach().cpu().numpy()
-    edge_weight = data.edge_attr.detach().cpu().numpy()
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-    ax.scatter(*(pos.T), s=1.0, c="b")
+    ax.scatter(*(ppos[0].T), s=1.0, c="r")
+    ax.scatter(*(ppos[1].T), s=1.0, c="g")
 
-    num_edges = edge_index.shape[1]
+    num_edges = edge_index.shape[1]//2
     for i in range(num_edges):
-        weight = edge_weight[i] if edge_weight is not None else 1
+        c = 'k' if data.edge_attr[i] == 1 else 'b'
         A, B = pos[edge_index[0][i]], pos[edge_index[1][i]]
-        ax.plot([A[0],B[0]], [A[1],B[1]], [A[2],B[2]], color='r', lw=1.0)
+        ax.plot([A[0],B[0]], [A[1],B[1]], [A[2],B[2]], c=c, lw=1.0)
 
     plt.show()
 
+def plot_matrix(mat):
+    if isinstance(mat, torch.Tensor):
+        mat = mat.detach().cpu().numpy()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.matshow(mat)
+    plt.show()
