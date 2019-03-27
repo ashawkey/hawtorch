@@ -37,17 +37,8 @@ class DelayedKeyboardInterrupt(object):
 
 
 class EmailSender(object):
-    def __init__(self, username=None, password=None, send_from=None, send_to=None, port=None, server=None):
-        self.load_default()
-        if username is not None: self.username = username 
-        if password is not None: self.password = password
-        if send_from is not None: self.send_from = username
-        if send_to is not None: self.send_to = send_to
-        if port is not None: self.port = port
-        if server is not None: self.server = server
-
-    def load_default(self, path="hawtorch/email.json"):
-        args = load_json(path)
+    def __init__(self, config="/home/hawkey/my-python-modules/hawtorch/email.json"):
+        args = load_json(config)
         self.username = args["username"]
         self.password = args["password"]
         self.sent_from = args["send_from"]

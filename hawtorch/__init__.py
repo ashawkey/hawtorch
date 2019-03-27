@@ -5,4 +5,5 @@ from . import io
 from . import optim
 # pre import
 from .trainer import Trainer
+from .utils import EmailSender
 

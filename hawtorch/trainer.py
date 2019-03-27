@@ -64,22 +64,7 @@ class Trainer(object):
         self.model.to(self.device)
         if self.use_parallel:
             self.model = nn.DataParallel(self.model)
-
-        if self.workspace_path is not None:
-            os.makedirs(self.workspace_path, exist_ok=True)
-            if self.use_checkpoint == 0:
-                self.log.info("Train from zero")
-            elif self.use_checkpoint < 0:
-                self.log.info("Loading latest checkpoint ...")
-                self.load_checkpoint()
-            elif self.use_checkpoint > 0:
-                self.log.info(f"Loading checkpoint {self.use_checkpoint} ...")
-                self.load_checkpoint(self.use_checkpoint)
-
         self.log.info('Number of model parameters: {}'.format(sum([p.numel() for p in model.parameters() if p.requires_grad])))
-
-        for metric in self.metrics:
-            metric.clear()
 
         self.epoch = 1
         self.global_step = 0
@@ -91,6 +76,17 @@ class Trainer(object):
             "Checkpoints": [],
             "BestResult": None,
             }
+
+        if self.workspace_path is not None:
+            os.makedirs(self.workspace_path, exist_ok=True)
+            if self.use_checkpoint == 0:
+                self.log.info("Train from zero")
+            elif self.use_checkpoint < 0:
+                self.log.info("Loading latest checkpoint ...")
+                self.load_checkpoint()
+            elif self.use_checkpoint > 0:
+                self.log.info(f"Loading checkpoint {self.use_checkpoint} ...")
+                self.load_checkpoint(self.use_checkpoint)
 
     """
     All you should modify is the following three step functions.
@@ -142,7 +138,7 @@ class Trainer(object):
 
     def evaluate(self):
         """
-        evaluate at the best epoch.
+        final evaluate at the best epoch.
         """
         model_name = type(self.model).__name__
         ckpt_path = os.path.join(self.workspace_path, 'checkpoints')
@@ -151,7 +147,11 @@ class Trainer(object):
             self.log.error("Best checkpoint not found!")
             raise FileNotFoundError
         self.load_checkpoint(best_path)
+        # turn off logging to tensorboardX
+        use_tensorboardX_old = self.use_tensorboardX
+        self.use_tensorboardX = False
         self.evaluate_one_epoch()
+        self.use_tensorboardX = use_tensorboardX_old
 
     def get_time(self):
         if torch.cuda.is_available(): 
@@ -178,7 +178,11 @@ class Trainer(object):
             self.local_step += 1
             self.global_step += 1
 
-            data = data.to(self.device)
+            if isinstance(data, list) or isinstance(data, tuple):
+                for i in range(len(data)):
+                    data[i] = data[i].to(self.device)
+            else:
+                data = data.to(self.device)
 
             outputs, truths, loss = self.train_step(data)
 
@@ -197,11 +201,16 @@ class Trainer(object):
             total_loss.append(loss.item())
             total_time = self.get_time() - start_time
 
-            if self.report_step_interval > 0 and self.global_step % self.report_step_interval == 0:
-                self.log.log1(f"step={self.epoch}/{self.global_step}, loss={loss.item():.4f}, time={total_time:.2f}")
+            if self.report_step_interval > 0 and self.local_step % self.report_step_interval == 0:
+                self.log.log1(f"step={self.epoch}/{self.local_step}, loss={loss.item():.4f}, time={total_time:.2f}")
                 for metric in self.metrics:
                     self.log.log1(metric.report())
                     metric.clear()
+
+        if self.report_step_interval < 0:
+            for metric in self.metrics:
+                self.log.log1(metric.report())
+                metric.clear()
 
         epoch_end_time = self.get_time()
         average_loss = np.mean(total_loss)
@@ -229,7 +238,11 @@ class Trainer(object):
             for data in pbar:    
                 self.local_step += 1
 
-                data = data.to(self.device)
+                if isinstance(data, list) or isinstance(data, tuple):
+                    for i in range(len(data)):
+                        data[i] = data[i].to(self.device)
+                else:
+                    data = data.to(self.device)
 
                 outputs, truths, loss = self.eval_step(data)
 
