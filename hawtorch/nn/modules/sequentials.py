@@ -63,7 +63,8 @@ class conv2dbr(nn.Module):
 
     def forward(self, x):
         return self.seq(x)
-    
+
+
 class conv2dgr(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation=True):
         super(conv2dgr, self).__init__()
@@ -76,27 +77,40 @@ class conv2dgr(nn.Module):
     def forward(self, x):
         return self.seq(x)
 
-class resnetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
-        super(resnetBlock, self).__init__()
-        self.conv1 = conv2dbr(in_channels, out_channels, kernel_size, stride, padding=padding)
-        self.conv2 = conv2dbr(out_channels, out_channels, kernel_size, stride, padding=padding, activation=False)
-        if stride != 1:
-            self.downsample = conv2dbr(in_channels, out_channels, stride, activation=False)
-        else:
-            self.downsample=None
-        self.relu = nn.ReLU(inplace=True)
+"""
+Experiment shows that BN after ReLU is better.
+ref: https://github.com/ducha-aiki/caffenet-benchmark/blob/master/batchnorm.md
+"""
+
+class conv1drb(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation=True):
+        super(conv1drb, self).__init__()
+        self.seq = nn.Sequential()
+        self.seq.add_module("conv", nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding=padding))
+        if activation: self.seq.add_module("activation", nn.ReLU(inplace=True))
+        self.seq.add_module("bn", nn.BatchNorm1d(out_channels))
 
     def forward(self, x):
-        identity = x
+        return self.seq(x) 
 
-        x = self.conv1(x)
-        x = self.conv2(x)
+class conv2drb(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation=True):
+        super(conv2drb, self).__init__()
+        self.seq = nn.Sequential()
+        self.seq.add_module("conv", nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding))
+        if activation: self.seq.add_module("activation", nn.ReLU(inplace=True))
+        self.seq.add_module("bn", nn.BatchNorm2d(out_channels))
 
-        if self.downsample:
-            identity = self.downsample(identity)
-        
-        x += identity
-        x = self.relu(x)
+    def forward(self, x):
+        return self.seq(x) 
 
-        return x
+class fcrb(nn.Module):
+    def __init__(self, in_features, out_features, activation=True):
+        super(fcrb, self).__init__()
+        self.seq = nn.Sequential()
+        self.seq.add_module("fc", nn.Linear(in_features, out_features))
+        if activation: self.seq.add_module("activatoin", nn.ReLU(inplace=True))
+        self.seq.add_module("bn", nn.BatchNorm1d(out_features))
+
+    def forward(self, x):
+        return self.seq(x)

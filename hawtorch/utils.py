@@ -2,6 +2,8 @@ import os
 import sys
 import signal
 import smtplib
+import torch
+import numpy as np
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
@@ -37,22 +39,26 @@ class DelayedKeyboardInterrupt(object):
 
 
 class EmailSender(object):
-    def __init__(self, config="/home/hawkey/my-python-modules/hawtorch/email.json"):
+    def __init__(self, subject="model", config="/home/hawkey/my-python-modules/hawtorch/email.json"):
         args = load_json(config)
+        self.subject = subject
         self.username = args["username"]
         self.password = args["password"]
-        self.sent_from = args["send_from"]
-        self.sent_to = args["send_to"]
+        self.send_from = args["send_from"]
+        self.send_to = args["send_to"]
         self.server = args["server"]
         self.port = args["port"]
 
     
-    def send(self, files=[], subject="[Model] Report", message="", use_tls=True):
+    def send(self, files=[], subject=None, message="report", use_tls=True):
         msg = MIMEMultipart()
         msg['From'] = self.send_from
         msg['To'] = COMMASPACE.join(self.send_to)
         msg['Date'] = formatdate(localtime=True)
+        subject = self.subject if subject is None else subject
         msg['Subject'] = subject
+
+        message = f"Report from your model {subject}, attachments are: \n {files}"
 
         msg.attach(MIMEText(message))
 
@@ -71,3 +77,10 @@ class EmailSender(object):
         smtp.login(self.username, self.password)
         smtp.sendmail(self.send_from, self.send_to, msg.as_string())
         smtp.quit()
+
+def fix_random_seed(seed=42, cudnn=True):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if cudnn:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False

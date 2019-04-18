@@ -1,8 +1,8 @@
 {
-    "username": "xxxxxxxxxxx",
-    "password": "xxxxxxxxxxxx",
-    "send_from": "xxxxxxxxxxxxx",
-    "send_to": ["xxxxxxxxxxx"],
-    "server": "xxxxxxxxx",
+    "username": "pihawkey1999@126.com",
+    "password": "tjx963113090",
+    "send_from": "pihawkey1999@126.com",
+    "send_to": ["1600012210@pku.edu.cn"],
+    "server": "smtp.126.com",
     "port": 25
 }

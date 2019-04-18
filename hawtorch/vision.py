@@ -1,9 +1,12 @@
+import os
+import time
 import cv2
 import torch
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from sklearn.metrics import confusion_matrix
 
 def imread(filename, use_float=True):
     """
@@ -47,31 +50,6 @@ def plot_images(img, img2=None):
     plt.show()
 
 
-class IntervalSaver:
-    def __init__(self, interval, workspace):
-        self.interval = interval
-        self.workspace = workspace
-        self.counter = 0
-    
-    def save(names, imgs):
-        imsave(names, imgs)
-
-    def __call__(imgs, prefix=None):
-        if not self.counter % self.interval == 0:
-            self.counter += 1
-            return
-
-        if not isinstance(imgs, np.ndarray):
-            imgs = imgs.detach().cpu().numpy()
-
-        if len(imgs.shape)==3:
-            batch_size = imgs.shape[0]
-            for batch in range(batch_size):
-                self.save(names[batch], imgs[batch])
-        else:
-            self.save(names, imgs)
-
-
 def _plot_point_cloud(ax, pc, axes=[0,1,2], keep_ratio=1.0, pointsize=0.05, color='k'):
     N = pc.shape[0]
     selected = np.random.choice(N, int(N*keep_ratio))
@@ -81,7 +59,11 @@ def _plot_point_cloud(ax, pc, axes=[0,1,2], keep_ratio=1.0, pointsize=0.05, colo
     if len(axes)==3: 
         ax.view_init(50, 135)
 
-def plot_point_cloud(pc, axes, keep_ratio=1.0, pointsize=0.05):
+def plot_point_cloud(pc, axes=[0,1,2], keep_ratio=1.0, pointsize=0.05):
+    """
+    pc: [N, f]
+    axes: [0,1,2]
+    """
     fig = plt.figure(figsize=(20,10))
     if len(axes) == 3:
         ax = fig.add_subplot(111, projection='3d')
@@ -112,10 +94,60 @@ def plot_graph(data):
 
     plt.show()
 
-def plot_matrix(mat):
+def plot_matrix(mat, path=None):
     if isinstance(mat, torch.Tensor):
         mat = mat.detach().cpu().numpy()
+
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.matshow(mat)
+
+    if path is None:
+        plt.show()
+    else:
+        plt.savefig(path)
+
+    plt.close(fig)
+
+
+def plot_confusion_matrix(y_true, y_pred,
+                          normalize=False,
+                          title=None,
+                          cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    if not title:
+        if normalize:
+            title = 'Normalized confusion matrix'
+        else:
+            title = 'Confusion matrix, without normalization'
+
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    # Only use the labels that appear in the data
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+
+    print(cm)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+    ax.figure.colorbar(im, ax=ax)
+
+    # Loop over data dimensions and create text annotations.
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
     plt.show()
+    #return ax
+

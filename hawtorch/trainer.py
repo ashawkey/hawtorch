@@ -38,6 +38,7 @@ class Trainer(object):
                  use_parallel=False,
                  use_tqdm=True,
                  use_tensorboardX=True,
+                 weight_init_function=None,
                  ):
                  
         self.model = model
@@ -59,11 +60,13 @@ class Trainer(object):
         self.use_parallel = use_parallel
         self.use_tqdm = use_tqdm
         self.use_tensorboardX = use_tensorboardX
-        
 
         self.model.to(self.device)
         if self.use_parallel:
             self.model = nn.DataParallel(self.model)
+        if weight_init_function is not None:
+            self.model.apply(weight_init_function)
+
         self.log.info('Number of model parameters: {}'.format(sum([p.numel() for p in model.parameters() if p.requires_grad])))
 
         self.epoch = 1
@@ -125,7 +128,7 @@ class Trainer(object):
             self.train_one_epoch()
 
             if self.epoch % self.eval_interval == 0:
-                self.evaluate_one_epoch()
+                self.evaluate_one_epoch(self.eval_set)
 
             if self.workspace_path is not None and self.epoch % self.save_interval == 0:
                 self.save_checkpoint()
@@ -136,27 +139,66 @@ class Trainer(object):
 
         self.log.info("Finished Training.")
 
-    def evaluate(self):
+    def evaluate(self, eval_set="eval"):
         """
         final evaluate at the best epoch.
         """
+        self.log.info(f"Evaluate at the best epoch on {eval_set} set...")
         model_name = type(self.model).__name__
         ckpt_path = os.path.join(self.workspace_path, 'checkpoints')
         best_path = f"{ckpt_path}/{model_name}_best.pth.tar"
         if not os.path.exists(best_path):
-            self.log.error("Best checkpoint not found!")
+            self.log.error(f"Best checkpoint not found! {best_path}")
             raise FileNotFoundError
         self.load_checkpoint(best_path)
         # turn off logging to tensorboardX
         use_tensorboardX_old = self.use_tensorboardX
         self.use_tensorboardX = False
-        self.evaluate_one_epoch()
+        self.evaluate_one_epoch(eval_set)
         self.use_tensorboardX = use_tensorboardX_old
 
     def get_time(self):
         if torch.cuda.is_available(): 
             torch.cuda.synchronize()
         return time.time()
+
+    def measure_forward_time(self):
+        t0 = self.get_time()
+        self.log.log(f"*** measure forward time ***")
+
+        self.model.eval()
+        for metric in self.metrics:
+            metric.clear()
+        t1 = self.get_time()
+        self.log.log1(f"metrics clear: {t1-t0:.4f}")
+
+        pbar = self.dataloaders["train"]
+
+        with torch.no_grad():
+            for data in pbar:    
+                if isinstance(data, list) or isinstance(data, tuple):
+                    for i in range(len(data)):
+                        data[i] = data[i].to(self.device)
+                else:
+                    data = data.to(self.device)
+                t3 = self.get_time()
+                self.log.log1(f"data to device: {t3-t1:.4f}")
+
+                outputs, truths, loss = self.eval_step(data)
+
+                t4 = self.get_time()
+                self.log.log1(f"model forward: {t4-t3:.4f}")
+
+                for metric in self.metrics:
+                    metric.update(outputs, truths)
+
+                t5 = self.get_time()
+                self.log.log1(f"metrics update: {t5-t4:.4f}")
+                break
+
+        t6 = self.get_time()
+        self.log.log1(f"total: {t6-t0:.4f}")
+        self.log.log(f"*** measure forward time finished ***")
 
     def train_one_epoch(self):
         self.log.log(f"==> Start Training Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']} ...")
@@ -220,14 +262,14 @@ class Trainer(object):
         self.log.log(f"==> Finished Epoch {self.epoch}, average_loss={average_loss:.4f}, time={epoch_end_time-epoch_start_time:.4f}")
 
 
-    def evaluate_one_epoch(self):
+    def evaluate_one_epoch(self, eval_set):
         self.log.log(f"++> Evaluate at epoch {self.epoch} ...")
 
         self.model.eval()
         for metric in self.metrics:
             metric.clear()
 
-        pbar = self.dataloaders[self.eval_set]
+        pbar = self.dataloaders[eval_set]
         if self.use_tqdm:
             pbar = tqdm.tqdm(pbar)
 
