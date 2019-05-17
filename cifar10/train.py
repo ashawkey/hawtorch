@@ -19,17 +19,18 @@ logger = io.logger(args["workspace_path"])
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 def create_loaders():
+    # transforms
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
-
     transform_test = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
+
     # CIFAR10 dataset
     logger.info("Start creating datasets...")
     train_dataset = datasets.CIFAR10(root='./data/', train=True, transform=transform_train, download=True)
