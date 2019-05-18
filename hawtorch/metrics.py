@@ -110,7 +110,7 @@ class ClassificationAverager:
         if each_class:
             for Cls in range(self.nCls):
                 if precisions[Cls] != 0 or recalls[Cls] != 0:
-                    text += f"\tClass {str(Cls)+"("+self.names[Cls]+")" if self.names is not None else Cls}: precision = {precisions[Cls]:.3f} recall = {recalls[Cls]:.3f}\n"
+                    text += f"\tClass {str(Cls)+'('+self.names[Cls]+')' if self.names is not None else Cls}: precision = {precisions[Cls]:.3f} recall = {recalls[Cls]:.3f}\n"
         if conf_mat:
             self.plot_conf_mat()
 

@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -55,11 +56,11 @@ class AlexNet(nn.Module):
     def __init__(self, num_classes=10):
         super(AlexNet, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(3, 96, 5, 1, padding=1),  # [32, 32, 3] -> [28, 28, 96]
-            nn.MaxPool2d(2, 1),                 # [28, 28, 96] -> [27, 27, 96]
+            nn.Conv2d(3, 96, 3, 1, padding=1),             # 32->32
+            nn.MaxPool2d(2, 2),                 # 32->16
             nn.ReLU(True),
             nn.Conv2d(96, 256, 3, 1, padding=1),
-            nn.MaxPool2d(3, 2),
+            nn.MaxPool2d(2, 2),                 # 16->8
             nn.ReLU(True),
             nn.Conv2d(256, 384, 3, 1, padding=1),
             nn.ReLU(True),
@@ -67,16 +68,15 @@ class AlexNet(nn.Module):
             nn.ReLU(True),
             nn.Conv2d(384, 256, 3, 1, padding=1),
             nn.ReLU(True),
-            nn.MaxPool2d(2),
         )
         self.classifier = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(13*13*256, 4096),
+            nn.Linear(8*8*256, 1024),
             nn.ReLU(True),
             nn.Dropout(0.5),
-            nn.Linear(4096, 4096),
+            nn.Linear(1024, 1024),
             nn.ReLU(True),
-            nn.Linear(4096, num_classes),
+            nn.Linear(1024, num_classes),
         )
 
     def forward(self, x):
@@ -208,6 +208,18 @@ class BottleNeck_preActivation(nn.Module):
         x = x + res
         return x
 
+def ResNet18():
+    return ResNet(ResBlock_original, [2,2,2,2])
+
+def ResNet18_pre():
+    return ResNet(ResBlock_preActivation, [2,2,2,2])
+
+def ResNet56():
+    return ResNet(BottleNeck_original, [3,4,6,3])
+
+def ResNet56_pre():
+    return ResNet(BottleNeck_preActivation, [3,4,6,3])
+
 class ResNet(nn.Module):
     """
     ResNet Architecture.
@@ -255,6 +267,8 @@ class ResNet(nn.Module):
         x = self.fc(x)
         return x
 
+
+
 ## ResNext
 
 class BottleNeck_ResNeXt(nn.Module):
@@ -281,7 +295,7 @@ class BottleNeck_ResNeXt(nn.Module):
         self.residual = nn.Sequential(
             nn.Conv2d(Fin, self.expansion*Fout, 1, stride, bias=False),
             nn.BatchNorm2d(self.expansion*Fout),
-        ) if Fin != Fout or stride != 1 else lambda x: x
+        ) if Fin != self.expansion*Fout or stride != 1 else lambda x: x
 
     def forward(self, x):
         res = self.residual(x)
@@ -290,11 +304,14 @@ class BottleNeck_ResNeXt(nn.Module):
         x = F.relu(x, True)
         return x
 
+def ResNeXt2x():
+    return ResNeXt(2, [3,4,6,3])
+
 class ResNeXt(nn.Module):
     """
     ResNeXt Architecture.
     cardinality is called group here.
-    Usage: ResNeXt(BlockType, group, [a, b, c, d])
+    Usage: ResNeXt(group, [a, b, c, d])
     """
     def __init__(self, group, num_blocks, block=BottleNeck_ResNeXt, num_classes=10):
         super(ResNeXt, self).__init__()
@@ -347,10 +364,10 @@ class BottleNeck_DenseNet(nn.Module):
         self.feature = nn.Sequential(
             nn.BatchNorm2d(Fin),
             nn.ReLU(),
-            nn.Conv2d(Fin, self.expansion*Fout, 1, bias=False)
+            nn.Conv2d(Fin, self.expansion*Fout, 1, bias=False),
             nn.BatchNorm2d(self.expansion*Fout),
             nn.ReLU(),
-            nn.Conv2d(self.expansion*Fout, Fout, 3, padding=1, bias=False)
+            nn.Conv2d(self.expansion*Fout, Fout, 3, padding=1, bias=False),
         )
 
     def forward(self, x):
@@ -361,6 +378,7 @@ class BottleNeck_DenseNet(nn.Module):
 
 class Transition_DenseNet(nn.Module):
     def __init__(self, Fin, reduction):
+        super(Transition_DenseNet, self).__init__()
         self.Fin = Fin
         self.Fout = int(math.floor(Fin * reduction))
         self.feature = nn.Sequential(
@@ -373,8 +391,12 @@ class Transition_DenseNet(nn.Module):
     def forward(self, x):
         return self.feature(x)
 
+def DenseNet121():
+    return DenseNet(BottleNeck_DenseNet, [6,12,24,16], 12, 0.5)
+
 class DenseNet(nn.Module):
     def __init__(self, block, num_blocks, growth_rate, reduction, num_classes=10):
+        super(DenseNet, self).__init__()
         self.block = block
         self.num_blocks = num_blocks
         self.growth_rate = growth_rate
@@ -425,5 +447,6 @@ class DenseNet(nn.Module):
         x = self.trans2(self.dense2(x))
         x = self.dense3(x)
         x = self.pool(x)
+        x = x.squeeze()
         x = self.fc(x)
         return x

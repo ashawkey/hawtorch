@@ -1,0 +1,15 @@
+{
+    "model": "AlexNet",
+    "optimizer": "SGD",
+    "objective": "CrossEntropyLoss",
+    "data_path": "./data",
+    "workspace_path": "./workspace/alexnet_SGD0.01_B128",
+    "device": "cuda",
+    "epochs": 300,
+    "train_batch_size": 128,
+    "test_batch_size": 128,
+    "lr": 0.01,
+    "lr_decay": 0.1,
+    "lr_decay_step": [100,150,250],
+    "weight_decay": 5e-4
+}

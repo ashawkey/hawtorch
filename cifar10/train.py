@@ -14,7 +14,7 @@ from hawtorch.metrics import ClassificationAverager
 
 import models
 
-config_file = "cifar10_config.json"
+config_file = "configs.json"
 
 args = io.load_json(config_file)
 logger = io.logger(args["workspace_path"])
@@ -60,7 +60,9 @@ def create_loaders():
 def create_trainer():
     logger.info("Start creating trainer...")
     device = args["device"]
+    
     model = getattr(models, args["model"])()
+
     objective = getattr(nn, args["objective"])()
     optimizer = getattr(optim, args["optimizer"])(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=args["lr_decay_step"], gamma=args["lr_decay"])
@@ -71,6 +73,7 @@ def create_trainer():
                     metrics=metrics, 
                     workspace_path=args["workspace_path"],
                     eval_set="test",
+                    input_shape=(3,32,32),
                     report_step_interval=-1,
                     )
 

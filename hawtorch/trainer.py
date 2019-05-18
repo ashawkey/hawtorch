@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
+from torchsummary import summary
 
 import hawtorch
 import hawtorch.nn as hnn
@@ -27,6 +28,7 @@ class Trainer(object):
                  dataloaders,
                  logger,
                  metrics=[],
+                 input_shape=None,
                  workspace_path=None, 
                  use_checkpoint=-1,
                  max_keep_ckpt=10,
@@ -62,6 +64,8 @@ class Trainer(object):
         self.use_tensorboardX = use_tensorboardX
 
         self.model.to(self.device)
+        if input_shape is not None:
+            summary(self.model, input_shape)
         if self.use_parallel:
             self.model = nn.DataParallel(self.model)
         if weight_init_function is not None:
@@ -162,7 +166,7 @@ class Trainer(object):
             torch.cuda.synchronize()
         return time.time()
 
-    def measure_forward_time(self):
+    def profile(self):
         t0 = self.get_time()
         self.log.log(f"*** measure forward time ***")
 
