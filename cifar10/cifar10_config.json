@@ -2,6 +2,7 @@
     "model": "AlexNet",
     "optimizer": "Adam",
     "objective": "CrossEntropyLoss",
+    "data_path": "./data",
     "workspace_path": "./workspace/AlexNet",
     "device": "cuda",
     "epochs": 300,

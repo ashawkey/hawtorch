@@ -335,8 +335,95 @@ class ResNeXt(nn.Module):
 ## DenseNet
 
 class BottleNeck_DenseNet(nn.Module):
-    def __init__(self, Fin, growth_rate):
+    """
+    DenseNet BottleNeck Block
+    [B, Fin, H, W] -> [B, Fin+Fout, H, W]
+    """
+    expansion = 4
+    def __init__(self, Fin, Fout):
         super(BottleNeck_DenseNet, self).__init__()
+        self.Fin = Fin
+        self.Fout = Fout
+        self.feature = nn.Sequential(
+            nn.BatchNorm2d(Fin),
+            nn.ReLU(),
+            nn.Conv2d(Fin, self.expansion*Fout, 1, bias=False)
+            nn.BatchNorm2d(self.expansion*Fout),
+            nn.ReLU(),
+            nn.Conv2d(self.expansion*Fout, Fout, 3, padding=1, bias=False)
+        )
 
     def forward(self, x):
+        res = x
+        x = self.feature(x)
+        x = torch.cat([x, res], dim=1)
+        return x
+
+class Transition_DenseNet(nn.Module):
+    def __init__(self, Fin, reduction):
+        self.Fin = Fin
+        self.Fout = int(math.floor(Fin * reduction))
+        self.feature = nn.Sequential(
+            nn.BatchNorm2d(Fin),
+            nn.ReLU(),
+            nn.Conv2d(Fin, self.Fout, 1, bias=False),
+            nn.AvgPool2d(2),
+        )
+    
+    def forward(self, x):
+        return self.feature(x)
+
+class DenseNet(nn.Module):
+    def __init__(self, block, num_blocks, growth_rate, reduction, num_classes=10):
+        self.block = block
+        self.num_blocks = num_blocks
+        self.growth_rate = growth_rate
+        self.reduction = reduction
+
+        planes = 2 * growth_rate
+        self.layer0 = nn.Conv2d(3, planes, 3, padding=1, bias=False)
+
+        self.dense0 = self.make_layer(planes, num_blocks[0])
+        planes += num_blocks[0] * growth_rate
+        self.trans0 = Transition_DenseNet(planes, reduction)
+        planes = self.trans0.Fout
+
+        self.dense1 = self.make_layer(planes, num_blocks[1])
+        planes += num_blocks[1] * growth_rate
+        self.trans1 = Transition_DenseNet(planes, reduction)
+        planes = self.trans1.Fout
+
+        self.dense2 = self.make_layer(planes, num_blocks[2])
+        planes += num_blocks[2] * growth_rate
+        self.trans2 = Transition_DenseNet(planes, reduction)
+        planes = self.trans2.Fout
+
+        self.dense3 = self.make_layer(planes, num_blocks[3])
+        planes += num_blocks[3] * growth_rate
+        
+        self.pool = nn.Sequential(
+            nn.BatchNorm2d(planes),
+            nn.ReLU(),
+            nn.AvgPool2d(4),
+        )
+        
+        self.fc = nn.Linear(planes, num_classes)
+
+    
+    def make_layer(self, Fin, num_block):
+        layers = []
+        for i in range(num_block):
+            layers.append(self.block(Fin, self.growth_rate))
+            Fin += self.growth_rate
+        return nn.Sequential(*layers)
+    
+
+    def forward(self, x):
+        x = self.layer0(x)
+        x = self.trans0(self.dense0(x))
+        x = self.trans1(self.dense1(x))
+        x = self.trans2(self.dense2(x))
+        x = self.dense3(x)
+        x = self.pool(x)
+        x = self.fc(x)
         return x

@@ -10,13 +10,16 @@ from torch.utils.data import DataLoader
 import hawtorch
 import hawtorch.io as io
 from hawtorch import Trainer
+from hawtorch.metrics import ClassificationAverager
 
 import models
 
-args = io.load_json("cifar10_config.json")
+config_file = "cifar10_config.json"
+
+args = io.load_json(config_file)
 logger = io.logger(args["workspace_path"])
 
-classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+names = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 def create_loaders():
     # transforms
@@ -33,21 +36,23 @@ def create_loaders():
 
     # CIFAR10 dataset
     logger.info("Start creating datasets...")
-    train_dataset = datasets.CIFAR10(root='./data/', train=True, transform=transform_train, download=True)
+    train_dataset = datasets.CIFAR10(root=args["data_path"], train=True, transform=transform_train, download=True)
     logger.info(f"Created train set! {len(train_dataset)}")
-    test_dataset = datasets.CIFAR10(root='./data/', train=False, transform=transform_test, download=True)
+    test_dataset = datasets.CIFAR10(root=args["data_path"], train=False, transform=transform_test, download=True)
     logger.info(f"Created test set! {len(test_dataset)}")
 
     # Data Loader
     train_loader = DataLoader(dataset=train_dataset,
                                 batch_size=args["train_batch_size"],
                                 shuffle=True,
-                                pin_memory=True)
+                                pin_memory=True,
+                                )
 
     test_loader = DataLoader(dataset=test_dataset,
                                 batch_size=args["test_batch_size"],
                                 shuffle=False,
-                                pin_memory=True)
+                                pin_memory=True,
+                                )
 
     return {"train":train_loader,
             "test":test_loader}
@@ -59,15 +64,15 @@ def create_trainer():
     objective = getattr(nn, args["objective"])()
     optimizer = getattr(optim, args["optimizer"])(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=args["lr_decay_step"], gamma=args["lr_decay"])
-    metrics = [hawtorch.metrics.ClassificationAverager(10), ]
+    metrics = [ClassificationAverager(10, names=names), ]
     loaders = create_loaders()
 
     trainer = Trainer(model, optimizer, scheduler, objective, device, loaders, logger,
-                  metrics=metrics, 
-                  workspace_path=args["workspace_path"],
-                  eval_set="test",
-                  report_step_interval=-1,
-                  )
+                    metrics=metrics, 
+                    workspace_path=args["workspace_path"],
+                    eval_set="test",
+                    report_step_interval=-1,
+                    )
 
     logger.info("Trainer Created!")
 

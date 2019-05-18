@@ -46,8 +46,9 @@ class IoUAverager:
 
 class ClassificationAverager:
     """ statistics for classification """
-    def __init__(self, nCls, eps=1e-5):
+    def __init__(self, nCls, eps=1e-5, names=None):
         self.nCls = nCls
+        self.names = names
         self.eps = eps
         self.N = 0
         self.table = np.zeros((self.nCls, 4), dtype=np.int32)
@@ -109,7 +110,7 @@ class ClassificationAverager:
         if each_class:
             for Cls in range(self.nCls):
                 if precisions[Cls] != 0 or recalls[Cls] != 0:
-                    text += "\tClass {}: precision = {:.3f} recall = {:.3f}\n".format(Cls, precisions[Cls], recalls[Cls])
+                    text += f"\tClass {str(Cls)+"("+self.names[Cls]+")" if self.names is not None else Cls}: precision = {precisions[Cls]:.3f} recall = {recalls[Cls]:.3f}\n"
         if conf_mat:
             self.plot_conf_mat()
 
