@@ -8,12 +8,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
-from torchsummary import summary
 
 import hawtorch
 import hawtorch.nn as hnn
 from hawtorch.io import logger
-from hawtorch.utils import DelayedKeyboardInterrupt
+from hawtorch.utils import DelayedKeyboardInterrupt, summary
 
 class Trainer(object):
     """Base trainer class. 
@@ -65,7 +64,7 @@ class Trainer(object):
 
         self.model.to(self.device)
         if input_shape is not None:
-            summary(self.model, input_shape)
+            summary(self.model, input_shape, logger=self.log)
         if self.use_parallel:
             self.model = nn.DataParallel(self.model)
         if weight_init_function is not None:
@@ -143,7 +142,7 @@ class Trainer(object):
 
         self.log.info("Finished Training.")
 
-    def evaluate(self, eval_set="eval"):
+    def evaluate(self, eval_set=None):
         """
         final evaluate at the best epoch.
         """
@@ -158,6 +157,8 @@ class Trainer(object):
         # turn off logging to tensorboardX
         use_tensorboardX_old = self.use_tensorboardX
         self.use_tensorboardX = False
+        if eval_set is None: 
+            eval_set = self.eval_set
         self.evaluate_one_epoch(eval_set)
         self.use_tensorboardX = use_tensorboardX_old
 

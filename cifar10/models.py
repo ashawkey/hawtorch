@@ -56,25 +56,49 @@ class AlexNet(nn.Module):
     def __init__(self, num_classes=10):
         super(AlexNet, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(3, 96, 3, 1, padding=1),             # 32->32
-            nn.MaxPool2d(2, 2),                 # 32->16
+            nn.Conv2d(3, 64, 5, 1, padding=2),  # 32->32
+            nn.MaxPool2d(3, 2),                 # 32->15
             nn.ReLU(True),
-            nn.Conv2d(96, 256, 3, 1, padding=1),
-            nn.MaxPool2d(2, 2),                 # 16->8
+            nn.Conv2d(64, 64, 5, 1, padding=2), 
+            nn.MaxPool2d(3, 2),                 # 15->7
             nn.ReLU(True),
-            nn.Conv2d(256, 384, 3, 1, padding=1),
+            nn.Conv2d(64, 64, 3, 1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(384, 384, 3, 1, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(384, 256, 3, 1, padding=1),
+            nn.Conv2d(64, 32, 3, 1, padding=1),
             nn.ReLU(True),
         )
         self.classifier = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(8*8*256, 1024),
+            nn.Linear(7*7*32, 10),
+        )
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        x = self.features(x)
+        x = x.view(batch_size, -1)
+        x = self.classifier(x)
+        return x
+
+class AlexNet2(nn.Module):
+    """
+    AlexNet adapted for Cifar-10.
+    """
+    def __init__(self, num_classes=10):
+        super(AlexNet2, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, 5, 1, padding=2),  # 32->32
+            nn.MaxPool2d(3, 2),                 # 32->15
             nn.ReLU(True),
-            nn.Dropout(0.5),
-            nn.Linear(1024, 1024),
+            nn.Conv2d(64, 64, 5, 1, padding=2), 
+            nn.MaxPool2d(3, 2),                 # 15->7
+            nn.ReLU(True),
+            nn.Conv2d(64, 64, 3, 1, padding=1),
+            nn.ReLU(True),
+            nn.Conv2d(64, 32, 3, 1, padding=1),
+            nn.ReLU(True),
+        )
+        self.classifier = nn.Sequential(
+            #nn.Dropout(0.5),
+            nn.Linear(7*7*32, 1024),
             nn.ReLU(True),
             nn.Linear(1024, num_classes),
         )
@@ -157,7 +181,7 @@ class ResBlock_preActivation(nn.Module):
     def __init__(self, Fin, Fout, stride):
         super(ResBlock_preActivation, self).__init__()
         self.feature = nn.Sequential(
-            nn.BatchNorm2d(Fout),
+            nn.BatchNorm2d(Fin),
             nn.ReLU(True),
             nn.Conv2d(Fin, Fout, 3, stride, padding=1, bias=False),
             nn.BatchNorm2d(Fout),
@@ -185,7 +209,7 @@ class BottleNeck_preActivation(nn.Module):
         super(BottleNeck_preActivation, self).__init__()
         self.feature = nn.Sequential(
             # layer1 eg. 256 -> 64
-            nn.BatchNorm2d(Fout),
+            nn.BatchNorm2d(Fin),
             nn.ReLU(True),
             nn.Conv2d(Fin, Fout, 1, bias=False),
             # layer2 eg. 64 -> 64
@@ -193,7 +217,7 @@ class BottleNeck_preActivation(nn.Module):
             nn.ReLU(True),
             nn.Conv2d(Fout, Fout, 3, stride, padding=1, bias=False),
             # layer3 eg. 64 -> 256
-            nn.BatchNorm2d(self.expansion*Fout),
+            nn.BatchNorm2d(Fout),
             nn.ReLU(True),
             nn.Conv2d(Fout, self.expansion*Fout, 1, bias=False),
         )

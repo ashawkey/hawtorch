@@ -11,10 +11,16 @@ import hawtorch
 import hawtorch.io as io
 from hawtorch import Trainer
 from hawtorch.metrics import ClassificationAverager
+from hawtorch.utils import backup
 
 import models
+import argparse
 
-config_file = "configs.json"
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', type=str, default='configs.json')
+parser = parser.parse_args()
+
+config_file = parser.config
 
 args = io.load_json(config_file)
 logger = io.logger(args["workspace_path"])
@@ -24,14 +30,14 @@ names = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 
 def create_loaders():
     # transforms
     transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
+        #transforms.RandomCrop(32, padding=4),
+        #transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
 
     # CIFAR10 dataset
@@ -82,5 +88,7 @@ def create_trainer():
     return trainer
 
 if __name__ == "__main__":
+    backup(args["workspace_path"])
     trainer = create_trainer()
     trainer.train(args["epochs"])
+    trainer.evaluate()
