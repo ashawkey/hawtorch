@@ -19,7 +19,7 @@ def write_json(filename, data):
 
 
 class logger:
-    def __init__(self, workspace=None, flush=True):
+    def __init__(self, workspace=None, flush=True, mute=False):
         """
         logger class.
         param:
@@ -28,6 +28,7 @@ class logger:
         """
         self.workspace = workspace
         self.flush = flush
+        self.mute = mute
         if workspace is not None:
             os.makedirs(workspace, exist_ok=True)
             self.log_file = os.path.join(workspace, "log.txt")
@@ -40,7 +41,8 @@ class logger:
             self.fp.close()
 
     def _print(self, text, use_pprint=False):
-        print(text) if not use_pprint else pprint(text)
+        if not self.mute:
+            print(text) if not use_pprint else pprint(text)
         if self.fp:
             print(text, file=self.fp)
         if self.flush:

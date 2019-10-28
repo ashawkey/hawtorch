@@ -6,7 +6,6 @@ from torch.optim import lr_scheduler
 import hawtorch
 import hawtorch.io as io
 from hawtorch import Trainer
-from hawtorch import EmailSender
 
 import models 
 
@@ -14,7 +13,6 @@ from torchvision import datasets, transforms
 
 args = io.load_json("mnist_config.json")
 logger = io.logger(args["workspace_path"])
-sender = EmailSender()
 
 def create_trainer():
     print("Create Trainer")
@@ -78,5 +76,4 @@ if __name__ == "__main__":
     trainer = create_trainer()
     trainer.train(args["epochs"])
     trainer.evaluate()
-    sender.send([logger.log_file])
     

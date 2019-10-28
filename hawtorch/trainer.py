@@ -14,6 +14,7 @@ import hawtorch.nn as hnn
 from hawtorch.io import logger
 from hawtorch.utils import DelayedKeyboardInterrupt, summary
 
+
 class Trainer(object):
     """Base trainer class. 
     """
@@ -29,7 +30,8 @@ class Trainer(object):
                  metrics=[],
                  input_shape=None,
                  workspace_path=None, 
-                 use_checkpoint=-1,
+                 use_checkpoint="latest",
+                 restart=False,
                  max_keep_ckpt=10,
                  eval_set="val",
                  test_set="test",
@@ -53,6 +55,7 @@ class Trainer(object):
         self.workspace_path = workspace_path
         self.use_checkpoint = use_checkpoint
         self.max_keep_ckpt = max_keep_ckpt
+        self.restart = restart
         self.eval_set = eval_set
         self.test_set = test_set
         self.eval_interval = eval_interval
@@ -85,37 +88,20 @@ class Trainer(object):
 
         if self.workspace_path is not None:
             os.makedirs(self.workspace_path, exist_ok=True)
-            if self.use_checkpoint == 0:
-                self.log.info("Train from zero")
-            elif self.use_checkpoint < 0:
+            if self.use_checkpoint == "latest":
                 self.log.info("Loading latest checkpoint ...")
                 self.load_checkpoint()
-            elif self.use_checkpoint > 0:
+            elif self.use_checkpoint == "scratch":
+                self.log.info("Train from scratch")
+            elif self.use_checkpoint == "best":
+                self.log.info("Loading best checkpoint ...")
+                model_name = type(self.model).__name__
+                ckpt_path = os.path.join(self.workspace_path, 'checkpoints')
+                best_path = f"{ckpt_path}/{model_name}_best.pth.tar"
+                self.load_checkpoint(best_path)
+            else: # path to ckpt
                 self.log.info(f"Loading checkpoint {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint)
-
-    """
-    All you should modify is the following three step functions.
-    """
-    ### ------------------------------
-
-    def train_step(self, data):        
-        inputs, truths = data
-        outputs = self.model(inputs)
-        loss = self.objective(outputs, truths)
-        return outputs, truths, loss
-    
-    def eval_step(self, data):
-        inputs, truths = data
-        outputs = self.model(inputs)
-        loss = self.objective(outputs, truths)
-        return outputs, truths, loss
-    
-    def test_step(self, data):
-        outputs = self.model(data)
-        return outputs
-
-    ### ------------------------------
 
     def train(self, max_epochs):
         """
@@ -126,8 +112,10 @@ class Trainer(object):
             logdir = os.path.join(self.workspace_path, "run", time_stamp)
             self.writer = tensorboardX.SummaryWriter(logdir)
 
+        
         for epoch in range(self.epoch, max_epochs+1):
             self.epoch = epoch
+            
             self.train_one_epoch()
 
             if self.epoch % self.eval_interval == 0:
@@ -137,7 +125,6 @@ class Trainer(object):
                 self.save_checkpoint()
 
         if self.use_tensorboardX:
-            #self.writer.export_scalars_to_json("./all_scalars.json")
             self.writer.close()
 
         self.log.info("Finished Training.")
@@ -167,104 +154,48 @@ class Trainer(object):
             torch.cuda.synchronize()
         return time.time()
 
-    def profile(self):
-        t0 = self.get_time()
-        self.log.log(f"*** measure forward time ***")
-
-        self.model.eval()
-        for metric in self.metrics:
-            metric.clear()
-        t1 = self.get_time()
-        self.log.log1(f"metrics clear: {t1-t0:.4f}")
-
-        pbar = self.dataloaders["train"]
-
-        with torch.no_grad():
-            for data in pbar:    
-                if isinstance(data, list) or isinstance(data, tuple):
-                    for i in range(len(data)):
-                        data[i] = data[i].to(self.device)
-                else:
-                    data = data.to(self.device)
-                t3 = self.get_time()
-                self.log.log1(f"data to device: {t3-t1:.4f}")
-
-                outputs, truths, loss = self.eval_step(data)
-
-                t4 = self.get_time()
-                self.log.log1(f"model forward: {t4-t3:.4f}")
-
-                for metric in self.metrics:
-                    metric.update(outputs, truths)
-
-                t5 = self.get_time()
-                self.log.log1(f"metrics update: {t5-t4:.4f}")
-                break
-
-        t6 = self.get_time()
-        self.log.log1(f"total: {t6-t0:.4f}")
-        self.log.log(f"*** measure forward time finished ***")
-
     def train_one_epoch(self):
         self.log.log(f"==> Start Training Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']} ...")
 
-        self.lr_scheduler.step()
         for metric in self.metrics:
             metric.clear()
-        total_loss = []
+
         self.model.train()
-
-        pbar = self.dataloaders["train"]
-        if self.use_tqdm:
-            pbar = tqdm.tqdm(pbar)
-
-        self.local_step = 0
         epoch_start_time = self.get_time()
-        for data in pbar:
-            start_time = self.get_time()
-            self.local_step += 1
-            self.global_step += 1
 
-            if isinstance(data, list) or isinstance(data, tuple):
-                for i in range(len(data)):
-                    data[i] = data[i].to(self.device)
-            else:
-                data = data.to(self.device)
+        outputs, As = self.model(self.dataloaders["features"]) # [1, N, nCls]
+        outputs = outputs.squeeze().permute(1,0)
 
-            outputs, truths, loss = self.train_step(data)
+        
+        mask = self.dataloaders["train_idx"]
 
-            loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+        outputs = outputs[mask]
+        truths = self.dataloaders["labels"][mask]
 
-            for metric in self.metrics:
-                metric.update(outputs, truths)
-                if self.use_tensorboardX:
-                    metric.write(self.writer, self.global_step, prefix="train")
-                    
+        loss = self.objective(outputs, truths, self.dataloaders["features"], As)
+
+
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+        self.lr_scheduler.step()
+
+        for metric in self.metrics:
+            metric.update(outputs, truths)
             if self.use_tensorboardX:
-                self.writer.add_scalar("train/loss", loss.item(), self.global_step)
+                metric.write(self.writer, self.epoch, prefix="train")
+                    
+        if self.use_tensorboardX:
+            self.writer.add_scalar("train/loss", loss.item(), self.epoch)
 
-            total_loss.append(loss.item())
-            total_time = self.get_time() - start_time
-
-            if self.report_step_interval > 0 and self.local_step % self.report_step_interval == 0:
-                self.log.log1(f"step={self.epoch}/{self.local_step}, loss={loss.item():.4f}, time={total_time:.2f}")
-                for metric in self.metrics:
-                    self.log.log1(metric.report())
-                    metric.clear()
-
-        if self.report_step_interval < 0:
-            for metric in self.metrics:
-                self.log.log1(metric.report())
-                metric.clear()
+        for metric in self.metrics:
+            self.log.log1(metric.report())
+            metric.clear()
 
         epoch_end_time = self.get_time()
-        average_loss = np.mean(total_loss)
-        self.stats["StepLoss"].extend(total_loss)
-        self.stats["EpochLoss"].append(average_loss)
+        self.stats["EpochLoss"].append(loss.item())
 
-        self.log.log(f"==> Finished Epoch {self.epoch}, average_loss={average_loss:.4f}, time={epoch_end_time-epoch_start_time:.4f}")
+        self.log.log(f"==> Finished Epoch {self.epoch}, loss={loss.item():.4f}, time={epoch_end_time-epoch_start_time:.4f}")
 
 
     def evaluate_one_epoch(self, eval_set):
@@ -274,31 +205,21 @@ class Trainer(object):
         for metric in self.metrics:
             metric.clear()
 
-        pbar = self.dataloaders[eval_set]
-        if self.use_tqdm:
-            pbar = tqdm.tqdm(pbar)
-
         epoch_start_time = self.get_time()
         with torch.no_grad():
-            self.local_step = 0
             start_time = self.get_time()
-            for data in pbar:    
-                self.local_step += 1
 
-                if isinstance(data, list) or isinstance(data, tuple):
-                    for i in range(len(data)):
-                        data[i] = data[i].to(self.device)
-                else:
-                    data = data.to(self.device)
+            outputs, As = self.model(self.dataloaders["features"]) # [N, nCls]
+            outputs = outputs.squeeze().permute(1,0)
 
-                outputs, truths, loss = self.eval_step(data)
+            mask = self.dataloaders["test_idx"]
+            outputs = outputs[mask]
+            truths = self.dataloaders["labels"][mask]
+            loss = self.objective(outputs, truths, self.dataloaders["features"], As)
 
-                for metric in self.metrics:
-                    metric.update(outputs, truths)
+            for metric in self.metrics:
+                metric.update(outputs, truths)
 
-            total_time = self.get_time() - start_time
-            self.log.log1(f"total_time={total_time:.2f}")
-            
             self.stats["EvalResults"].append(self.metrics[0].measure())
 
             for metric in self.metrics:
@@ -312,28 +233,6 @@ class Trainer(object):
 
         epoch_end_time = self.get_time()
         self.log.log(f"++> Evaluate Finished. time={epoch_end_time-epoch_start_time:.4f}")
-
-
-    def predict(self):
-        self.log.log(f"++> Predict at epoch {self.epoch} ...")
-
-        self.model.eval()
-
-        pbar = self.dataloaders[self.test_set]
-        if self.use_tqdm:
-            pbar = tqdm.tqdm(pbar)
-
-        with torch.no_grad():
-            start_time = self.get_time()
-            for data in pbar:    
-                data = data.to(self.device)
-                outputs = self.test_step(data)
-                # TODO: codes to save outputs
-
-            total_time = self.get_time() - start_time
-            self.log.log1(f"total_time={total_time:.2f}")
-
-        self.log.log(f"++> Evaluate Finished.")
 
     def save_checkpoint(self):
         """Saves a checkpoint of the network and other variables."""
@@ -408,13 +307,17 @@ class Trainer(object):
 
         #assert model_name == checkpoint_dict['model_name'], 'network is not of correct type.'
 
-        self.epoch = checkpoint_dict['epoch'] + 1
-        self.global_step = checkpoint_dict['global_step']
         self.model.load_state_dict(checkpoint_dict['model'])
-        self.optimizer.load_state_dict(checkpoint_dict['optimizer'])
-        self.lr_scheduler.load_state_dict(checkpoint_dict['lr_scheduler'])
-        self.lr_scheduler.last_epoch = checkpoint_dict['epoch'] 
-        self.stats = checkpoint_dict['stats']
+        if not self.restart:
+            self.log.info("Loading epoch and other status...")
+            self.epoch = checkpoint_dict['epoch'] + 1
+            self.global_step = checkpoint_dict['global_step']
+            self.optimizer.load_state_dict(checkpoint_dict['optimizer'])
+            self.lr_scheduler.load_state_dict(checkpoint_dict['lr_scheduler'])
+            self.lr_scheduler.last_epoch = checkpoint_dict['epoch'] 
+            self.stats = checkpoint_dict['stats']
+        else:
+            self.log.info("Only loading model parameters.")
         
         self.log.info("Checkpoint Loaded Successfully.")
         return True

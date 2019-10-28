@@ -207,7 +207,7 @@ def backup(workspace, files=["configs.json","train.py","models.py"]):
         if os.path.exists(f):
             ff = os.path.join(workspace, f)
             shutil.copy2(f, ff)
-            print(f"[Info] {f} backed up at {ff}.")
+            print(f"[INFO] {f} backed up at {ff}.")
         else:
-            print(f"[Warning] {f} not found.")
+            print(f"[WARNING] {f} not found.")
 

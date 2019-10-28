@@ -6,10 +6,10 @@ class IoUAverager:
     def __init__(self, nCls, eps=1e-5):
         self.nCls = nCls
         self.eps = eps
-        self.shape_ious = []
+        self.shape_ious = [[] for _ in range(self.nCls)]
 
     def clear(self):
-        self.shape_ious = []
+        self.shape_ious = [[] for _ in range(self.nCls)]
 
     def update(self, outputs, truths):
         preds = outputs.max(dim=1)[1]
@@ -18,20 +18,18 @@ class IoUAverager:
 
         batch_size = pids_np.shape[0]
         for batch in range(batch_size):
-            part_ious = []
             for part in range(self.nCls):
-                I = np.sum(np.logical_and(preds_np[batch] == part,
-                    pids_np[batch] == part))
-                U = np.sum(np.logical_or(preds_np[batch] == part,
-                    pids_np[batch] == part))
-                if U == 0:
-                    continue
-                else:
-                    part_ious.append(I/U)
-            self.shape_ious.append(np.mean(part_ious))
+                I = np.sum(np.logical_and(preds_np[batch] == part, pids_np[batch] == part))
+                U = np.sum(np.logical_or(preds_np[batch] == part, pids_np[batch] == part))
+                if U == 0: continue
+                else: self.shape_ious[part].append(I/U)
 
     def measure(self):
-        return np.mean(self.shape_ious)
+        res = []
+        for part in range(self.nCls):
+            if self.shape_ious[part] != []:
+                res.append(np.mean(self.shape_ious[part]))
+        return np.mean(res)
 
     def better(self, A, B):
         return A > B
@@ -40,7 +38,12 @@ class IoUAverager:
         writer.add_scalar(os.path.join(prefix, "mIoU"), self.measure(), global_step)
 
     def report(self):
-        text = f"IoU = {self.measure():.4f}\n"
+        text = f"mIoU = {self.measure():.4f}\n"
+        for part in range(self.nCls):
+            if self.shape_ious[part] != []:
+                text += f"\t Class {part}: {np.mean(self.shape_ious[part]):.4f}\n"
+            else:
+                text += f"\t Class {part}: None\n"
         return text
 
 
@@ -93,7 +96,7 @@ class ClassificationAverager:
         from .vision import plot_confusion_matrix
         plot_confusion_matrix(self.hist_truths, self.hist_preds)
 
-    def report(self, each_class=True, conf_mat=False):
+    def report(self, each_class=False, conf_mat=False):
         precisions = []
         recalls = []
         for Cls in range(self.nCls):
@@ -107,6 +110,7 @@ class ClassificationAverager:
 
         text = f"Overall Accuracy = {accuracy:.4f}({total_TP}/{self.N})\n"
         text += f"\tMean-class Accuracy = {accuracy_mean_class:.4f}\n"
+        
         if each_class:
             for Cls in range(self.nCls):
                 if precisions[Cls] != 0 or recalls[Cls] != 0:
