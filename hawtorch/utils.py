@@ -1,5 +1,6 @@
 import os
 import sys
+import glob
 import signal
 import smtplib
 import shutil
@@ -202,12 +203,13 @@ def summary(model, input_size, batch_size=-1, device="cuda", logger=None):
     print("----------------------------------------------------------------")
     # return summary
 
-def backup(workspace, files=["configs.json","train.py","models.py"]):
-    for f in files:
-        if os.path.exists(f):
-            ff = os.path.join(workspace, f)
-            shutil.copy2(f, ff)
-            print(f"[INFO] {f} backed up at {ff}.")
-        else:
-            print(f"[WARNING] {f} not found.")
-
+def backup(workspace, patterns=["*.py", "*.json", "*.sh"], recursive=True):
+    save_path = os.path.join(workspace, "backup")
+    os.makedirs(save_path, exist_ok=True)
+    for patt in patterns:
+        files = glob.glob(patt, recursive=True)
+        for f in files:
+            if os.path.exists(f):
+                ff = os.path.join(save_path, f.split('/')[-1])
+                shutil.copy2(f, ff)
+    print(f"[INFO] backed up files.")

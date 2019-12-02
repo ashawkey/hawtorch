@@ -27,11 +27,11 @@ def create_trainer():
 
     lr_decay = lr_scheduler.StepLR(optimizer, step_size=args["lr_decay_step"], gamma=args["lr_decay"])
 
-    metrics = [hawtorch.metrics.ClassificationAverager(10), ]
+    metrics = [hawtorch.metrics.ClassificationMeter(10), ]
 
     loaders = create_loaders()
 
-    trainer = Trainer(model, optimizer, lr_decay, objective, device, loaders, logger,
+    trainer = Trainer(args, model, optimizer, lr_decay, objective, device, loaders, logger,
                   metrics=metrics, 
                   workspace_path=args["workspace_path"],
                   eval_set="test",

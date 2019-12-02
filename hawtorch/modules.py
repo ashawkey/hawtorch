@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from .normalization import GroupNorm
 
 class fcdr(nn.Module):
     def __init__(self, in_features, out_features, p=0.5, activation=True):

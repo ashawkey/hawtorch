@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 import hawtorch
 import hawtorch.io as io
 from hawtorch import Trainer
-from hawtorch.metrics import ClassificationAverager
+from hawtorch.metrics import ClassificationMeter
 from hawtorch.utils import backup
 
 import models
@@ -33,11 +33,11 @@ def create_loaders():
         #transforms.RandomCrop(32, padding=4),
         #transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
 
     # CIFAR10 dataset
@@ -72,10 +72,10 @@ def create_trainer():
     objective = getattr(nn, args["objective"])()
     optimizer = getattr(optim, args["optimizer"])(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=args["lr_decay_step"], gamma=args["lr_decay"])
-    metrics = [ClassificationAverager(10, names=names), ]
+    metrics = [ClassificationMeter(10, names=names), ]
     loaders = create_loaders()
 
-    trainer = Trainer(model, optimizer, scheduler, objective, device, loaders, logger,
+    trainer = Trainer(args, model, optimizer, scheduler, objective, device, loaders, logger,
                     metrics=metrics, 
                     workspace_path=args["workspace_path"],
                     eval_set="test",

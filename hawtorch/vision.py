@@ -5,6 +5,7 @@ import torch
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.metrics import confusion_matrix
 
@@ -151,3 +152,25 @@ def plot_confusion_matrix(y_true, y_pred,
     plt.show()
     #return ax
 
+def view_batch(imgs, lbls):
+    '''
+    imgs: [D, H, W, C], the depth or batch dimension should be the first.
+    '''
+    fig = plt.figure()
+    ax1 = fig.add_subplot(121)
+    ax2 = fig.add_subplot(122)
+    ax1.set_title('image')
+    ax2.set_title('label')
+    """
+    if init with zeros, the animation may not update? seems bug in animation.
+    """
+    #lbls = np.stack((lbls, imgs, imgs), -1)
+    img1 = ax1.imshow(np.random.rand(*imgs.shape[1:]))
+    img2 = ax2.imshow(np.random.rand(*lbls.shape[1:]))
+    def update(i):
+        plt.suptitle(str(i))
+        img1.set_data(imgs[i])
+        img2.set_data(lbls[i])
+        return img1, img2
+    ani = animation.FuncAnimation(fig, update, frames=len(imgs), interval=10, blit=False, repeat_delay=0)
+    plt.show()
